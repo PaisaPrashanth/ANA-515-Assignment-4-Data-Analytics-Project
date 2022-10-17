@@ -1,0 +1,119 @@
+---
+title: "ANA 515 Assignment 4 Data Analytics Project"
+author: "Prashanth Paisa"
+date: "2022-10-15"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Business Goal
+
+The goal of performing analysis of MovieLens Dataset is to create user/movie profile by using their movie watch history. Understanding of the users mindset and according to that recommending them with a movie genre is the important goal of this analysis. Apart from that, this analysis will also help movie industry about the way to release a movie and the genre of the movies from the knowledge extracted from this data analysis.
+
+## Dataset Retrieval
+
+This MovieLens Dataset is retrieved from the following link:
+
+https://drive.google.com/file/d/1Dn1BZD3YxgBQJSIjbfNnmCFlDW2jdQGD/view
+
+## Intializing required libraries
+
+```{r}
+library(recommenderlab)
+library(ggplot2)
+library(data.table)
+library(reshape2)
+library(Hmisc)
+```
+
+## Loading Data
+
+```{r}
+movie_data <- read.csv("IMDB/movies.csv",stringsAsFactors=FALSE)
+rating_data <- read.csv("IMDB/ratings.csv")
+str(movie_data)
+```
+```{r}
+summary(movie_data)
+summary(rating_data)
+```
+
+## Describing Data
+
+```{r}
+describe(movie_data)
+describe(rating_data)
+```
+## Data Preparation
+
+```{r}
+movie_genre <- as.data.frame(movie_data$genres, stringsAsFactors=FALSE)
+movie_genre2 <- as.data.frame(tstrsplit(movie_genre[,1], '[|]', 
+                                   type.convert=TRUE), 
+                         stringsAsFactors=FALSE)
+colnames(movie_genre2) <- c(1:10)
+
+list_genre <- c("Action", "Adventure", "Animation", "Children", 
+                "Comedy", "Crime","Documentary", "Drama", "Fantasy",
+                "Film-Noir", "Horror", "Musical", "Mystery","Romance",
+                "Sci-Fi", "Thriller", "War", "Western")
+genre_mat1 <- matrix(0,10330,18)
+genre_mat1[1,] <- list_genre
+colnames(genre_mat1) <- list_genre
+
+for (index in 1:nrow(movie_genre2)) {
+  for (col in 1:ncol(movie_genre2)) {
+    gen_col = which(genre_mat1[1,] == movie_genre2[index,col])
+    genre_mat1[index+1,gen_col] <- 1
+}
+}
+genre_mat2 <- as.data.frame(genre_mat1[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+for (col in 1:ncol(genre_mat2)) {
+  genre_mat2[,col] <- as.integer(genre_mat2[,col]) #convert from characters to integers
+} 
+str(genre_mat2)
+```
+## Model Implementation
+
+```{r}
+SearchMatrix <- cbind(movie_data[,1:2], genre_mat2[])
+ratingMatrix <- dcast(rating_data, userId~movieId, value.var = "rating", na.rm=FALSE)
+ratingMatrix <- as.matrix(ratingMatrix[,-1]) #remove userIds
+#Convert rating matrix into a recommenderlab sparse matrix
+ratingMatrix <- as(ratingMatrix, "realRatingMatrix")
+recommendation_model <- recommenderRegistry$get_entries(dataType = "realRatingMatrix")
+lapply(recommendation_model, "[[", "description")
+recommendation_model$IBCF_realRatingMatrix$parameters
+
+```
+
+## Data Visualization
+
+Here a bar plot has been developed with Trips by Hour and Month. 
+
+```{r}
+similarity_mat <- similarity(ratingMatrix[1:4, ],
+                               method = "cosine",
+                               which = "users")
+movie_views <- colCounts(ratingMatrix) # count views for each movie
+table_views <- data.frame(movie = names(movie_views),
+                          views = movie_views) # create dataframe of views
+table_views <- table_views[order(table_views$views,
+                                 decreasing = TRUE), ] # sort by number of views
+table_views$title <- NA
+for (index in 1:10325){
+  table_views[index,3] <- as.character(subset(movie_data,
+                                         movie_data$movieId == table_views[index,1])$title)
+}
+table_views[1:6,]
+ggplot(table_views[1:6, ], aes(x = title, y = views)) +
+  geom_bar(stat="identity", fill = 'steelblue') +
+  geom_text(aes(label=views), vjust=-0.3, size=3.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Total Views of the Top Films")
+```
